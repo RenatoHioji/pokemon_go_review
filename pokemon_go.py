@@ -1,10 +1,10 @@
 import nltk
 import random
 from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
 from nltk.classify import NaiveBayesClassifier
 
 nltk.download('punkt')
+nltk.download("punkt_tab")
 nltk.download('stopwords')
 
 textao = [
@@ -30,9 +30,8 @@ textao = [
     ("great concept of a game, ruined by the greed of this company. get the bare minimum and expect to pay for anything extra. wouldn't mind that so much if the actual game worked well but no, it's so inconsistent, you'd have better luck winning scratch offs from your local gas station then this game actually working correctly. might as well hand it over to Game Freak as the let's go games work better on my switch made 7 years ago then your horrible app does on the most modern of phones.", "neg")]
 
 palavras_pare = set(stopwords.words('english'))
-
 def extrair_caracteristicas(frase):
-    palavras = word_tokenize(frase)
+    palavras = frase.lower().split()
     palavras_filtradas = [p for p in palavras if p not in palavras_pare]
     return {palavra: True for palavra in palavras_filtradas}
 
