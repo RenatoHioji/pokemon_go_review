@@ -1,15 +1,23 @@
+import pandas as pd
 import nltk
-import random
 from nltk.corpus import stopwords
-from nltk.classify import NaiveBayesClassifier
+from nltk.tokenize import word_tokenize
+from nltk.stem import WordNetLemmatizer
+
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from sklearn.decomposition import NMF
+from sklearn.model_selection import train_test_split
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.metrics import accuracy_score, classification_report
 
 nltk.download('punkt')
-nltk.download("punkt_tab")
 nltk.download('stopwords')
+nltk.download('wordnet')
 
+# Base de avaliações
 textao = [
-    ("I love the game and just wish there was an easier to get revived, raid passes, potions more easier and the raids with big Pokemon a little easier especially for people who don't have many friends to play Pokemon go with or who have health issues where they can't physically get to the Poke stops or gyms and it would be a lot better if there was a way to actually talk in the game with other players", "pos"),
-    ("love it and it is amazing I can not do this on my phone cuz my parents took it One of the most fun and addicting games I have ever played. A whole new Pokemon experience and mechanics. There are a lot of bugs and problems, but I feel they will get updated soon since the app is in such an early state. Would love features like battling other trainers directly, trading, and being able to add friends.", "pos"),
+    ("love it and it is amazing I can not do this on my phone cuz my parents took it", "pos"),
+    ("One of the most fun and addicting games I have ever played. A whole new Pokemon experience and mechanics. There are a lot of bugs and problems, but I feel they will get updated soon since the app is in such an early state. Would love features like battling other trainers directly, trading, and being able to add friends.", "pos"),
     ("As immersive as you allow it to be. The framework of the game is very outdated, but it gets the job done. Still a lot to be desired (better achievement system would be a great start), but I'm afraid a new game would have to be created to get a much better experience. Addictive, gets you out, gets you walking/running, and there are people playing it almost everywhere if you want to socialize. Amazing game.", "pos"),
     ("Addicting in the best way, active, social, fun easy to play hard to stop playing", "pos"),
     ("This game was excellent. I've spent months playing this game, taking it along to parks, around the block, and on vacations just to find rare pokemon and get some progress on my pokedex. I've recently came back to the game, and my avatar was changed for the worse. The new customizations are atrocious. It killed off the game's original, great avatar style, just to replace it with the uncanny, broken mess we have today. Listen to your community and give an option to use the old style, good lord.", "pos"),
@@ -27,22 +35,75 @@ textao = [
     ("Certain features like routes are still INCREDIBLY buggy even after a long time. Which wouldn't be a problem is evolutions weren't locked behind it. I can not recommend this app at this stage because it doesn't feel like the devs adds even trying to fix the issue. And THAT is why I have it such a low score.", "neg"),
     ("Now the recent update/upgrade is so good that you have to click on a gift multiple times before it will let you open it. guess it wants to make sure you want your friends gift? the new layout also is sus and was not broken so they decided it needed to be fixed for their own amusement. add the lag, glitching and inability to smoothly transition from WiFi to cell data, this is the game for you! Don't do anything you want to keep going from WiFi to cell data. it will crash just about every tim.", "neg"),
     ("The new update that took away the navigation bar has made it so much harder to play the game. The developer seems to have forgotten that newer phones don't have back buttons and you have to swipe from the edge to go back. With the new update, you can't swipe to go back, despite this being possible in previous versions. It ends up wasting Pokeballs if you try to use your phone's normal method to go back.", "neg"),
-    ("great concept of a game, ruined by the greed of this company. get the bare minimum and expect to pay for anything extra. wouldn't mind that so much if the actual game worked well but no, it's so inconsistent, you'd have better luck winning scratch offs from your local gas station then this game actually working correctly. might as well hand it over to Game Freak as the let's go games work better on my switch made 7 years ago then your horrible app does on the most modern of phones.", "neg")]
+    ("great concept of a game, ruined by the greed of this company. get the bare minimum and expect to pay for anything extra. wouldn't mind that so much if the actual game worked well but no, it's so inconsistent, you'd have better luck winning scratch offs from your local gas station then this game actually working correctly. might as well hand it over to Game Freak as the let's go games work better on my switch made 7 years ago then your horrible app does on the most modern of phones.", "neg")
+]
 
-palavras_pare = set(stopwords.words('english'))
-def extrair_caracteristicas(frase):
-    palavras = frase.lower().split()
-    palavras_filtradas = [p for p in palavras if p not in palavras_pare]
-    return {palavra: True for palavra in palavras_filtradas}
+df = pd.DataFrame(textao, columns=["Comentario", "Sentimento"])
 
-dataset = [(extrair_caracteristicas(frase), sentimento) for (frase, sentimento) in textao]
-random.shuffle(dataset)
-tamanho_treino = int(len(dataset) * 0.7)
+palavras_pare = set(stopwords.words("english"))
+lemmatizador  = WordNetLemmatizer()
 
-treino = dataset[:tamanho_treino]
-teste = dataset[tamanho_treino:]
-classificador = NaiveBayesClassifier.train(treino)
-acuracia = nltk.classify.accuracy(classificador, teste)
-print(f"Acurácia: {acuracia:.2f}")
+def preprocessar_texto(texto):
+    palavras = word_tokenize(texto.lower())
+    palavras_filtradas = [t for t in palavras if t.isalpha() and t not in palavras_pare]
+    palavras_lematizadas = [lemmatizador.lemmatize(t) for t in palavras_filtradas]
+    return " ".join(palavras_lematizadas)
 
-classificador.show_most_informative_features(5)
+df["ComentarioProcessado"] = df["Comentario"].apply(preprocessar_texto)
+
+vetorizador  = CountVectorizer(max_features=15)
+X = vetorizador.fit_transform(df["ComentarioProcessado"])
+freq_palavra = pd.DataFrame({
+    "palavra": vetorizador.get_feature_names_out(),
+    "contagem": X.toarray().sum(axis=0)
+}).sort_values(by="contagem", ascending=False)
+
+print("\n=== Top 15 palavras mais mencionadas ===")
+print(freq_palavra)
+
+tfidf_vetorizador = TfidfVectorizer(max_df=0.7, stop_words="english")
+tfidf = tfidf_vetorizador.fit_transform(df["ComentarioProcessado"])
+
+nmf = NMF(n_components=3, random_state=42)
+nmf.fit(tfidf)
+
+nomes_features = tfidf_vetorizador.get_feature_names_out()
+print("\n=== Temas Identificados ===")
+for i, topic in enumerate(nmf.components_):
+    palavras_top = [nomes_features[j] for j in topic.argsort()[-10:]]
+    print(f"Tema {i+1}: {', '.join(palavras_top)}")
+
+treino_df, teste_df = train_test_split(
+    df,
+    test_size=0.3,
+    stratify=df["Sentimento"],
+    random_state=42
+)
+
+print("\n=== Distribuição no Treino ===")
+print(treino_df["Sentimento"].value_counts(normalize=True))
+
+print("\n=== Distribuição no Teste ===")
+print(teste_df["Sentimento"].value_counts(normalize=True))
+
+vetorizador_nb = CountVectorizer()
+X_treino = vetorizador_nb.fit_transform(treino_df["ComentarioProcessado"])
+X_teste = vetorizador_nb.transform(teste_df["ComentarioProcessado"])
+y_treino = treino_df["Sentimento"]
+y_teste = teste_df["Sentimento"]
+
+modelo_nb = MultinomialNB()
+modelo_nb.fit(X_treino, y_treino)
+
+y_pred = modelo_nb.predict(X_teste)
+print("\n=== Acurácia do Modelo ===")
+print(accuracy_score(y_teste, y_pred))
+print("\n=== Relatório de Classificação ===")
+print(classification_report(y_teste, y_pred))
+
+nova_frase = "I love this game, it is very fun and engaging!"
+nova_frase_processada = preprocessar_texto(nova_frase)
+nova_frase_vetor = vetorizador_nb.transform([nova_frase_processada])
+sentimento_previsto = modelo_nb.predict(nova_frase_vetor)
+print("\nFrase:", nova_frase)
+print("Sentimento previsto:", sentimento_previsto[0])
